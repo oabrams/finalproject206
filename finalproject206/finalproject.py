@@ -1,4 +1,3 @@
-from bs4 import BeautifulSoup
 import requests
 import json
 import secrets
@@ -16,6 +15,7 @@ YELPJSON = 'yelp.json'
 TWITTERJSON = 'twitter.json'
 API_KEY=secrets.yelp_api_key
 HEADERS={'Authorization': 'Bearer {}'.format(API_KEY)}
+
 
 def init_db():
     try:
@@ -61,7 +61,8 @@ def init_db():
         'popularity_score' Integer
         )
         """
-
+        # 'restaurantkey' Integer Not Null,
+        #     FOREIGN KEY (restaurantkey) REFERENCES yelp(Id)
     cur.execute(tweets)
     conn.commit()
     statement= """
@@ -110,19 +111,28 @@ def params_unique_combination(baseurl, params):
 
 #twitter code
 try:
-    cache_file1=open('twitter_cache.json', 'r')
+    cache_file1=open(TWITTERJSON, 'r')
     cache_contents1=cache_file1.read()
     CACHE_DICT1=json.loads(cache_contents1)
     cache_file1.close()
 except:
     CACHE_DICT1={}
 
-def params_unique_combination(baseurl, params):
-    alphabetized_keys=sorted(params.keys())
-    res=[]
-    for x in alphabetized_keys:
-        res.append('{}-{}'.format(x, params[x]))
-    return baseurl + '_'.join(res)
+#yelp cache
+try:
+    cache_file=open(YELPJSON, 'r')
+    cache_contents=cache_file.read()
+    CACHE_DICT=json.loads(cache_contents)
+    cache_file.close()
+except:
+    CACHE_DICT={}
+
+# def params_unique_combination(baseurl, params):
+#     alphabetized_keys=sorted(params.keys())
+#     res=[]
+#     for x in alphabetized_keys:
+#         res.append('{}-{}'.format(x, params[x]))
+#     return baseurl + '_'.join(res)
 
 def make_twitter_request_using_cache(url, params={}, auth=None):
     unique_ident=params_unique_combination(url, params)
@@ -135,10 +145,9 @@ def make_twitter_request_using_cache(url, params={}, auth=None):
         resp=requests.get(url, params, auth=auth)
         CACHE_DICT1[unique_ident]=resp.text
         dumped_json_cache=json.dumps(CACHE_DICT1)
-        fw=open('twitter_cache.json', 'w')
+        fw=open(TWITTERJSON, 'w')
         fw.write(dumped_json_cache)
         fw.close()
-
         return CACHE_DICT1[unique_ident]
 
 
@@ -163,9 +172,25 @@ def make_twitter_request_using_cache(url, params={}, auth=None):
 #         line5='[tweeted on {} | id: {}]'.format(self.creation_date, self.id)
 #         return line1 + "\n" + line2 + "\n" + line3 + "\n" + line4 + "\n" + line5
 
-
+def make_yelp_request_using_cache(url, params, headers=HEADERS, verify=False):
+    unique_ident=params_unique_combination(url, params)
+    if unique_ident in CACHE_DICT:
+        return CACHE_DICT[unique_ident]
+    else:
+        resp=requests.request('GET', url, headers=HEADERS, params=params)
+        CACHE_DICT[unique_ident]=resp.text
+        dumped_json_cache=json.dumps(CACHE_DICT)
+        fw=open(YELPJSON, 'w')
+        fw.write(dumped_json_cache)
+        yelpinfo=json.loads(CACHE_DICT[unique_ident])
+        # return(yelpinfo)
+        fw.close()
+        return(CACHE_DICT[unique_ident])
 
 def make_yelp_request_using_db(url, params, term, location, verify):
+
+    response=make_yelp_request_using_cache(url, params)
+    newresponse=json.loads(response)
     try:
         conn=sqlite3.connect(DBNAME)
         cur=conn.cursor()
@@ -177,20 +202,12 @@ def make_yelp_request_using_db(url, params, term, location, verify):
     cur.execute(statement1, insert)
     conn.commit()
 
+
     statement= 'SELECT * FROM url_link '
     statement+= 'WHERE term="{}" and location="{}"'.format(term, location)
     x=cur.execute(statement)
     if len(x.fetchall())==1:
-        unique_ident=params_unique_combination(url, params)
-        resp=requests.request('GET', url, headers=HEADERS, params=params)
-        CACHE_DICT1[unique_ident]=resp.text
-        dumped_json_cache=json.dumps(CACHE_DICT1)
-        fw=open('cache.json', 'w')
-        fw.write(dumped_json_cache)
-        yelpinfo=json.loads(CACHE_DICT1[unique_ident])
-
-
-        for x in yelpinfo['businesses']:
+        for x in newresponse['businesses']:
             # print(x['name'])
             insert=(None, x['name'], x['location']['city'], x['location']['state'], x['location']['address1'], x['location']['zip_code'], x['rating'], term, location, x['coordinates']['latitude'], x['coordinates']['longitude'])
             # insert=(None, x[3], x[13]['city'], x[13]['state'], x[13]['address1'], x[13]['zip_code'], x[9])
@@ -199,7 +216,7 @@ def make_yelp_request_using_db(url, params, term, location, verify):
 
             cur.execute(statement, insert)
             conn.commit()
-        fw.close()
+        # fw.close()
     statement='SELECT * FROM yelp '
     statement+='WHERE term="{}" and location="{}"'.format(term, location)
     b=cur.execute(statement)
@@ -225,55 +242,60 @@ def make_yelp_request_using_db(url, params, term, location, verify):
             longitude.append(x[3])
             print(count, x[0], 'Rating:', x[1])
             count+=1
-        trace0 = go.Bar(
-        x=names,
-        y=ratings,
-        text=(names, ratings),
-        marker=dict(
-        color='rgb(158,202,225)',
-        line=dict(
-        color='rgb(8,48,107)',
-        width=1.5,
-        )
-        ),
-        opacity=0.6
-        )
+        barinput=input('Enter "bar" to see a bar graph or "map" to see a map of corresponding restaurants: ')
+        if barinput=='bar':
+            trace0 = go.Bar(
+            x=names,
+            y=ratings,
+            text=(names, ratings),
+            marker=dict(
+            color='rgb(158,202,225)',
+            line=dict(
+            color='rgb(8,48,107)',
+            width=1.5,
+            )
+            ),
+            opacity=0.6
+            )
 
-        data = [trace0]
-        layout = go.Layout(
-        title='Top 10 Restaurants for {} in {} (alpha sorted)'.format(term, location),
-        )
+            data = [trace0]
+            layout = go.Layout(
+            title='Top 10 Restaurants for {} in {} (alpha sorted)'.format(term, location),
+            )
 
-        fig = go.Figure(data=data, layout=layout)
-        py.plot(fig, filename='text-hover-bar')
+            fig = go.Figure(data=data, layout=layout)
+            py.plot(fig, filename='text-hover-bar')
         #map
-        data = Data([
-        Scattermapbox(
-        lat=latitude,
-        lon=longitude,
-        mode='markers',
-        marker=Marker(
-        size=9
-        ),
-        text=names,
-        )
-        ])
-        layout = Layout(
-        title='Map of Top 10 Restaurants for {} in {} (alpha)'.format(term, location),
-        autosize=True,
-        hovermode='closest',
-        mapbox=dict(
-        accesstoken=secrets.mapbox_access_token,
-        bearing=0,
-        center=dict(lat=latitude[0], lon=longitude[0]),
+        elif barinput=='map':
+            data = Data([
+            Scattermapbox(
+            lat=latitude,
+            lon=longitude,
+            mode='markers',
+            marker=Marker(
+            size=9
+            ),
+            text=names,
+            )
+            ])
+            layout = Layout(
+            title='Map of Top 10 Restaurants for {} in {} (alpha)'.format(term, location),
+            autosize=True,
+            hovermode='closest',
+            mapbox=dict(
+            accesstoken=secrets.mapbox_access_token,
+            bearing=0,
+            center=dict(lat=latitude[0], lon=longitude[0]),
 
-        pitch=0,
-        zoom=10
-        ),
-        )
+            pitch=0,
+            zoom=10
+            ),
+            )
 
-        fig = dict(data=data, layout=layout)
-        py.plot(fig, filename='Multiple Mapbox')
+            fig = dict(data=data, layout=layout)
+            py.plot(fig, filename='Multiple Mapbox')
+        else:
+            print('Invalid input')
 
         number_next_input=input('Enter a number that corresponds with a restaurant from the list for more information or enter "next" and receive a list of the next 10 restaurants from the database: ')
         if number_next_input=='next':
@@ -301,7 +323,8 @@ def make_yelp_request_using_db(url, params, term, location, verify):
                 print(list1[int(finalinput)-1][0],'\n', 'Rating:', list1[int(finalinput)-1][1], '\n', list1[int(finalinput)-1][2], list1[int(finalinput)-1][3], list1[int(finalinput)-1][4])
                 tweetinput=input('Enter "tweets" for a list of tweets about the selected restaurant or "exit" to leave the programs: ')
                 if tweetinput=='tweets':
-                    get_tweets_for_restaurant_from_db(list1[int(finalinput)-1][0])
+                    tweets=get_tweets_for_restaurant_from_db(list1[int(finalinput)-1][0])
+                return(list1)
 
         #ask another user input about whether you want to select a restaurant or enter another query
         elif number_next_input.isdigit() and int(number_next_input)<= 10:
@@ -316,6 +339,7 @@ def make_yelp_request_using_db(url, params, term, location, verify):
             tweetinput=input('Enter "tweets" for a list of tweets about the selected restaurant or "exit" to leave the programs: ')
             if tweetinput=='tweets':
                 get_tweets_for_restaurant_from_db(listagain[int(number_next_input)-1][0])
+            return(listagain)
 
 
 
@@ -336,54 +360,59 @@ def make_yelp_request_using_db(url, params, term, location, verify):
             longitude.append(x[3])
             print(count, x[0], 'Rating:', x[1])
             count+=1
-        trace0 = go.Bar(
-        x=names,
-        y=ratings,
-        text=(names, ratings),
-        marker=dict(
-        color='rgb(158,202,225)',
-        line=dict(
-        color='rgb(8,48,107)',
-        width=1.5,
-        )
-        ),
-        opacity=0.6
-        )
+        barinput=input('Enter "bar" to see a bar graph or "map" to see a map of corresponding restaurants: ')
+        if barinput=='bar':
+            trace0 = go.Bar(
+            x=names,
+            y=ratings,
+            text=(names, ratings),
+            marker=dict(
+            color='rgb(158,202,225)',
+            line=dict(
+            color='rgb(8,48,107)',
+            width=1.5,
+            )
+            ),
+            opacity=0.6
+            )
 
-        data = [trace0]
-        layout = go.Layout(
-        title='Top 10 Restaurants for {} in {} (by ratings)'.format(term, location),
-        )
+            data = [trace0]
+            layout = go.Layout(
+            title='Top 10 Restaurants for {} in {} (by ratings)'.format(term, location),
+            )
 
-        fig = go.Figure(data=data, layout=layout)
-        py.plot(fig, filename='text-hover-bar')
+            fig = go.Figure(data=data, layout=layout)
+            py.plot(fig, filename='text-hover-bar')
         #map
-        data = Data([
-        Scattermapbox(
-        lat=latitude,
-        lon=longitude,
-        mode='markers',
-        marker=Marker(
-        size=9
-        ),
-        text=names,
-        )
-        ])
-        layout = Layout(
-        title='Map of Top 10 Restaurants for {} in {} (by ratings)'.format(term, location),
-        autosize=True,
-        hovermode='closest',
-        mapbox=dict(
-        accesstoken=secrets.mapbox_access_token,
-        bearing=0,
-        center=dict(lat=latitude[0], lon=longitude[0]),
-        pitch=0,
-        zoom=10
-        ),
-        )
+        elif barinput=='map':
+            data = Data([
+            Scattermapbox(
+            lat=latitude,
+            lon=longitude,
+            mode='markers',
+            marker=Marker(
+            size=9
+            ),
+            text=names,
+            )
+            ])
+            layout = Layout(
+            title='Map of Top 10 Restaurants for {} in {} (by ratings)'.format(term, location),
+            autosize=True,
+            hovermode='closest',
+            mapbox=dict(
+            accesstoken=secrets.mapbox_access_token,
+            bearing=0,
+            center=dict(lat=latitude[0], lon=longitude[0]),
+            pitch=0,
+            zoom=10
+            ),
+            )
 
-        fig = dict(data=data, layout=layout)
-        py.plot(fig, filename='Multiple Mapbox')
+            fig = dict(data=data, layout=layout)
+            py.plot(fig, filename='Multiple Mapbox')
+        else:
+            print('Invalid input')
         number_next_input=input('Enter a number that corresponds with a restaurant from the list for more information or enter "next" and receive a list of the next 10 restaurants from the database: ')
         if number_next_input=='next':
             statement='SELECT RestaurantName, rating '
@@ -411,6 +440,7 @@ def make_yelp_request_using_db(url, params, term, location, verify):
                 tweetinput=input('Enter "tweets" for a list of tweets about the selected restaurant or "exit" to leave the programs: ')
                 if tweetinput=='tweets':
                     get_tweets_for_restaurant_from_db(list1[int(finalinput)-1][0])
+                return(list1)
         #ask another user input about whether you want to select a restaurant or enter another query
         elif number_next_input.isdigit() and int(number_next_input)<= 10:
             statement='SELECT RestaurantName, rating, Address, City, State, zipcode '
@@ -424,12 +454,15 @@ def make_yelp_request_using_db(url, params, term, location, verify):
             tweetinput=input('Enter "tweets" for a list of tweets about the selected restaurant or "exit" to leave the programs: ')
             if tweetinput=='tweets':
                 get_tweets_for_restaurant_from_db(listagain[int(number_next_input)-1][0])
+            return(listagain)
+
     elif newinput=='exit':
         response='exit'
-        return(response)
+        print(response)
 
     else:
         print('Invalid input')
+
 
 def get_data_from_yelp(term, location):
     url='https://api.yelp.com/v3/businesses/search'
@@ -438,6 +471,9 @@ def get_data_from_yelp(term, location):
     conn=sqlite3.connect(DBNAME)
     cur=conn.cursor()
     conn.close()
+    # print("YELP DATA")
+    # print(response)
+    return(response)
 
 def get_tweets_for_restaurant_from_db(restaurant):
     twitter_key=secrets.twitter_client_key
@@ -488,22 +524,8 @@ def get_tweets_for_restaurant_from_db(restaurant):
         print('-'*20)
 
 
-    # for item in range(len(tweetinfo)):
-    #     tweetmore=tweetinfo[item]
-    #     tweet_list.append(Tweet(tweetmore))
-    # updatedtweetlist=[]
-    # for x in tweet_list:
-    #     if x.is_retweet==False:
-    #         updatedtweetlist.append(x)
-    #         # print(type(x.popularity_score))
-    # finallist=sorted(updatedtweetlist, key=lambda x: x.popularity_score, reverse=True)[:10]
-    # if len(finallist)!=0:
-    #     for x in finallist:
-    #         print(x)
-    #         print('-'*20)
-    #     return finallist
-    # else:
-    #     print('No tweets found about {}'.format(restaurant))
+
+
 
 def interactive_prompt():
     response = ''
@@ -521,7 +543,8 @@ def interactive_prompt():
         else:
             print('Invalid input, try again.')
     print('Bye!')
+if __name__=="__main__":
 # init_db()
 # get_data_from_yelp('Breakfast', '91436')
-interactive_prompt()
+    interactive_prompt()
 # restaurantjsoninfo()
