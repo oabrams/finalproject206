@@ -24,7 +24,7 @@ requests-oauthlib==0.8.0
 six==1.11.0
 traitlets==4.3.2
 tweepy==3.6.0
-urllib3==1.22
+urllib3==1.26.5
 virtualenv==15.2.0
 virtualenv-clone==0.3.0
 Werkzeug==0.14.1
